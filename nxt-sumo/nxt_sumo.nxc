@@ -1,0 +1,194 @@
+//       sumobot with two sonic sensors
+
+#define START_WAIT 5000  // ms
+#define jooksu_aeg 500   // how much to back away from white line (ms)
+#define mootor OUT_BC    // motors
+#define light_threshold 40  // light threshold
+#define otsingu_kaugus 50  // distance for enemy
+#define attack_speed 100     //
+#define left_light_port IN_4   // vasak ees valgus
+#define right_light_port IN_1  // parem ees valgus
+#define start_button IN_2  // start button port (if used)
+#define sonic_front IN_3   // sonic sensor port front
+#define sonic_back IN_2    // sonic sensor port back
+#define use_start_button false // use sepperate button for starting
+
+#define REVESE_MOTOR true // false = old sumo; true = new sumo
+
+int light_left, light_right; // light sensor values
+int state;  // mostly used for white line dettection
+int sound;  // what sound to play
+int kaugus; // distance front
+int kaugus_taga; // distance back
+int last;   // last state, used to set rotation direction
+bool suund;  // rotation direction
+mutex moveMutex;  // only one task should use motors at the time
+mutex DistVarMutex;
+
+void setup()
+{   // setup code
+    // SetSensorTouch(start_button);
+     SetSensorLowspeed(sonic_front);
+    // SetSensorLowspeed(sonic_back);
+     SetSensorLight(left_light_port);
+     SetSensorLight(right_light_port);
+     suund = false;
+     state = 0;
+     sound = 0;
+}
+
+task get_and_chk_lights()
+{   // get light sensor values for detecting sumo white ring
+    // and set state
+    while(true) {
+        light_left = Sensor(left_light_port);
+        light_right = Sensor(right_light_port);
+
+        if      (light_left > light_threshold)  { state = 1; }
+        else if (light_right > light_threshold) { state = 2; }
+        else    { state = 0; }
+
+        NumOut(30, LCD_LINE1, state);
+        NumOut(30, LCD_LINE2, light_right);
+        NumOut(30, LCD_LINE3, light_left);
+    }
+}
+void rev_suund() {
+    // reverse rotation direction
+    if (suund == true)
+        suund = false;
+    else
+        suund = true;
+}
+void act_on_lights()
+{   // don't run over the line
+    if ((state == 1) || (state == 2))
+    {
+         if (REVESE_MOTOR) {OnRevReg(mootor, 100, OUT_REGMODE_SPEED);}
+         else { OnFwdReg(mootor, 100, OUT_REGMODE_SPEED); }
+         sound = 1;
+         rev_suund();
+         Wait (jooksu_aeg);
+         sound = 0;
+         Float(mootor);
+    }
+}
+task get_sonic()
+{   // get distance from enemy
+    while(true) {
+        //kaugus = SensorUS(sonic_front);
+        kaugus_taga = 100; //SensorUS(sonic_back);
+
+        NumOut(30, LCD_LINE4, kaugus);
+        NumOut(30, LCD_LINE5, kaugus_taga);
+        if (CurrentTick() % 400 / 100 == 0) { sound = 3; }  // sound effect
+    }
+}
+
+task sounds()
+{   // for fun
+    
+    while (false) {
+        if (sound == 1) {
+            PlayTone(3000, 200);
+            PlayTone(6000, 200);
+        }
+        else if (sound == 2) {
+            PlayTone(4000, 50);
+            Wait (10);
+            PlayTone(1000, 50);
+            Wait (10);
+            PlayTone(4000, 50);
+            sound = 0;
+            Wait (80);
+        }
+        else if (sound == 3) {
+            PlayTone(7000, 100);
+            sound = 0;
+            Wait (10);
+        }
+    }
+}
+task sumo()
+{   // sumo logic
+    while(true) {
+        //Acquire(moveMutex);
+        if (state == 0) {
+            //Acquire(DistVarMutex);
+            kaugus = SensorUS(sonic_front);
+            //Release(DistVarMutex);
+            if (kaugus < otsingu_kaugus) {
+                //attack (front sensor detection)
+                if (REVESE_MOTOR) {OnFwdReg(mootor, attack_speed, OUT_REGMODE_SPEED);}
+                else { OnRevReg(mootor, attack_speed, OUT_REGMODE_SPEED); }
+                sound = 2;
+                //Wait(500);
+                if (last == 0) {
+                    // if target lost then reverse scan
+                    last = 1;
+                    rev_suund();
+                }
+            }
+            //~ if (kaugus_taga < 10) {
+                //~ //attack (back sensor detection)
+                //~ if (REVESE_MOTOR) {OnRevReg(mootor, attack_speed, OUT_REGMODE_SPEED);}
+                //~ else { OnFwdReg(mootor, attack_speed, OUT_REGMODE_SPEED); }
+                //~ sound = 2;
+                //~ //Wait(500);
+                //~ if (last == 0) {
+                    //~ // if target lost then reverse scan
+                    //~ last = 1;
+                    //~ rev_suund();
+                //~ }
+            //~ }
+            else {
+                // scan for enemy
+                last = 0;
+                if (suund == true ) {
+                    OnFwdSync(mootor, 100, REVESE_MOTOR ? -100 : 100);
+                }
+                else if (suund == false) {
+                    OnFwdSync(mootor, 100, REVESE_MOTOR ? 100 : -100);
+                }
+            }
+        }
+        if ((state == 1) || (state == 2))
+        {
+             if (REVESE_MOTOR) {OnRevReg(mootor, 100, OUT_REGMODE_SPEED);}
+             else { OnFwdReg(mootor, 100, OUT_REGMODE_SPEED); }
+             sound = 1;
+             rev_suund();
+             Wait (jooksu_aeg);
+             sound = 0;
+             Float(mootor);
+        }
+    }
+}
+
+task ule_serva()
+{ // check for white line
+ while(false)
+ {
+  //Acquire(moveMutex);
+  act_on_lights();
+  //Release(moveMutex);
+ }
+}
+
+
+task main()
+{
+     //startup
+     setup();
+
+     // wait for startbutton (if set so)
+     if (use_start_button) {until (SENSOR_1 == 1);}
+     PlayTone(1000, 100);
+     Wait(START_WAIT);
+     PlayTone(1000, 100);
+     //while(true) {
+     //    OnRevReg(mootor, attack_speed, OUT_REGMODE_SPEED);
+     //}
+     //run tasks
+     Precedes(ule_serva, sumo, get_and_chk_lights, sounds, get_sonic);
+}
