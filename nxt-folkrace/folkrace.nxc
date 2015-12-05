@@ -1,0 +1,107 @@
+// LEGO NXT Folkrace
+
+// General
+#define START_WAIT 500 // wait time before start in ms
+#define REVESE_MOTORS false // reverse motors direction
+
+// Outputs
+#define MOTORS OUT_BC   // motors use to drive the robot
+
+// Inputs
+#define SONIC_LEFT IN_1				// ultrasonic sensor for detecting
+#define SONIC_FRONT IN_2			// walls
+#define SONIC_RIGHT IN_3			//
+#define TOUCH_FRONT IN_4			// Detect crash into a obsticle
+#define TOUCH_FRONT_INPUT SENSOR_4	// touch input
+
+
+struct sonic_sensors {
+	int left;
+	int front;
+	int right;
+};
+
+sonic_sensors sonic;
+
+struct touch_sensors {
+	bool front;
+};
+
+touch_sensors touch;
+
+float turn_radius = 0;
+
+bool reverse = false;
+unsigned long reverse_start;
+
+void setup() {
+	SetSensorLowspeed(SONIC_LEFT);
+	SetSensorLowspeed(SONIC_FRONT);
+	SetSensorLowspeed(SONIC_RIGHT);
+	SetSensorTouch(TOUCH_FRONT);
+}
+
+
+task update_sensors() {
+	while(true) {
+		sonic.left = SensorUS(SONIC_LEFT);
+		sonic.front = SensorUS(SONIC_FRONT);
+		sonic.right = SensorUS(SONIC_RIGHT);
+		touch.front = TOUCH_FRONT_INPUT;
+
+    turn_radius = ((sonic.right/3)-(sonic.left/3))/5;//*(sonic.front/100);
+	}
+}
+
+task debug_output() {
+  TextOut(0, LCD_LINE1, "SLeft");
+  TextOut(30, LCD_LINE1, "SFrnt");
+  TextOut(60, LCD_LINE1, "SRight");
+  TextOut(0, LCD_LINE3, "TFrnt");
+  TextOut(30, LCD_LINE3, "SRadi");
+  while(true) {
+    TextOut(0, LCD_LINE2, "   ");
+    NumOut(0, LCD_LINE2, sonic.left, DRAW_OPT_CLEAR_PIXELS);
+    TextOut(30, LCD_LINE2, "   ");
+    NumOut(30, LCD_LINE2, sonic.front, DRAW_OPT_CLEAR_PIXELS);
+    TextOut(60, LCD_LINE2, "   ");
+    NumOut(60, LCD_LINE2, sonic.right, DRAW_OPT_CLEAR_PIXELS);
+    TextOut(0, LCD_LINE4, "   ");
+    NumOut(0, LCD_LINE4, touch.front, DRAW_OPT_CLEAR_PIXELS);
+    TextOut(30, LCD_LINE4, "      ");
+    NumOut(30, LCD_LINE4, turn_radius, DRAW_OPT_CLEAR_PIXELS);
+  }
+}
+
+task run() {
+  while(true) {
+    if(touch.front || (sonic.front < 10) || reverse) {
+      if (REVESE_MOTORS) {OnFwdSync(MOTORS, 100, turn_radius);}
+      else {OnRevSync(MOTORS, 100, turn_radius);}
+      if (!reverse) {
+        reverse = true;
+        reverse_start = CurrentTick();
+      } else if ((CurrentTick() - reverse_start) > 1000) {
+        reverse = false;
+      }
+
+    } else {
+      if (REVESE_MOTORS) {OnRevSync(MOTORS, 100, turn_radius);}
+      else {OnFwdSync(MOTORS, 100, turn_radius);}
+    }
+
+  }
+}
+
+task main () {
+  // hello
+  setup();
+
+  // here we go!
+  PlayTone(1000, 100);
+  Wait(START_WAIT);
+  PlayTone(1000, 100);
+
+  // run the tasks
+  Precedes(debug_output, update_sensors, run);
+}

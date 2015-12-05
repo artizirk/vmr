@@ -1,0 +1,20 @@
+
+task main() {
+
+  SetSensorTouch(IN_3);
+  SetSensorTouch(IN_4);
+
+  PlayTone(1000, 100);
+  Wait(5000);
+  PlayTone(1000, 100);
+
+  while (true) {
+    if (SENSOR_3) {
+      OnRevSync(OUT_BC, 100, 40);
+    } else if (SENSOR_4) {
+      OnRevSync(OUT_BC, 100, -40);
+    } else {
+      OnRevSync(OUT_BC, 100, 0);
+    }
+  }
+}
